@@ -1,8 +1,8 @@
 import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys';
-const readline = require('readline');
-const fs = require('fs');
-const path = require('path');
 import pino from 'pino';
+import readline from 'readline';
+import fs from 'fs';
+import path from 'path';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const CONFIG_FILE = './data/config.json';
