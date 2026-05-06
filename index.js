@@ -318,9 +318,12 @@ async function connectBot() {
             console.log(chalk.red("❌ Verbindung geschlossen, reconnect..."));
             setTimeout(connectBot, 5000);
         } else if (connection === "open") {
-            console.log(chalk.green("✅ ᭙ꪖ᭢ᡶꫀᦔꪖకꪖ Verbunden mit WhatsApp!"));
- }
-});
+            console.log(chalk.green("✅ bot Verbunden mit WhatsApp!"));
+        }
+    });
+}
+
+connectBot();
 async function startBot() {
 startBot();
 }
