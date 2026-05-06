@@ -3,6 +3,7 @@ const pino = require('pino');
 const readline = require('readline');
 const fs = require('fs');
 const path = require('path');
+import pino from 'pino';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const CONFIG_FILE = './data/config.json';
