@@ -296,6 +296,9 @@ async function main() {
 //=========================//
 async function connectBot() {
     const { state, saveCreds } = await useMultiFileAuthState("./auth");
+function connectBot(question) {
+  console.log(question);
+}
 
     const sock = makeWASocket({
         auth: state,
