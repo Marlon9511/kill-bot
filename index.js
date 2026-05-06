@@ -294,7 +294,7 @@ async function main() {
 
  
 
-} catch (err) {
+ catch (err) {
   console.error('messages.upsert error:', err);
 }     console.error('messages.upsert error:', err);
       log(`ERROR: ${(err && err.message) ? err.message : String(err)}`);
