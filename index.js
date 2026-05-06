@@ -319,7 +319,7 @@ async function connectBot() {
             setTimeout(connectBot, 5000);
         } else if (connection === "open") {
             console.log(chalk.green("✅ ᭙ꪖ᭢ᡶꫀᦔꪖకꪖ Verbunden mit WhatsApp!"));
- }
+ });
 
 async function startBot() {
 startBot();
