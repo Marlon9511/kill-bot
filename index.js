@@ -294,5 +294,5 @@ async function main() {
 
  
 
-
+async function startBot ;
 startBot();
