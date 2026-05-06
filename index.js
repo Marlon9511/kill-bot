@@ -1,11 +1,4 @@
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore,
-    delay
-} = require('@whiskeysockets/baileys');
+import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys';
 const pino = require('pino');
 const readline = require('readline');
 const fs = require('fs');
