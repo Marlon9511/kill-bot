@@ -1,9 +1,15 @@
 import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys';
 import pino from 'pino';
-import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
+import readline from "readline";
 
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+const question = (q) => new Promise((resolve) => rl.question(q, resolve));
 // ─── Config ───────────────────────────────────────────────────────────────────
 const CONFIG_FILE = './data/config.json';
 const OWNERS_FILE = './data/owners.json';
