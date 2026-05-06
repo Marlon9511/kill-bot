@@ -305,5 +305,5 @@ async function main() {
   });
 
   console.log('Sword-art-online-bot gestartet.');
-}
+
 startBot();
