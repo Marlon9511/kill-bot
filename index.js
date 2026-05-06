@@ -292,7 +292,11 @@ async function main() {
     console.log('================================\n');
 }
 
-      console.error('messages.upsert error:', err);
+ 
+
+} catch (err) {
+  console.error('messages.upsert error:', err);
+}     console.error('messages.upsert error:', err);
       log(`ERROR: ${(err && err.message) ? err.message : String(err)}`);
     
   console.log('Sword-art-online-bot gestartet.');
