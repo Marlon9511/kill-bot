@@ -337,3 +337,4 @@ async function main() {
 ;
 startbot()
 }
+) 
