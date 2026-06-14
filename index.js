@@ -336,5 +336,4 @@ async function main() {
             console.log(chalk.cyan(`< ================================================== >`));
 ;
 startbot()
-) 
-
+}
