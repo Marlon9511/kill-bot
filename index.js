@@ -334,4 +334,5 @@ async function main() {
             await delay(1999)
             console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname || 'KNIGHT BOT'} ]`)}\n\n`))
             console.log(chalk.cyan(`< ================================================== >`));
-startbot() 
+startbot()
+) 
