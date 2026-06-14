@@ -298,42 +298,39 @@ async function main() {
     console.log(`Owner: ${getOwners().length > 0 ? getOwners().map(o => '+'+o).join(', ') : 'Keine'}`);
     console.log('================================\n');
 }
-//=========================//
-// Connect Bot + Pairing-Code
-//=========================//
-async function connectBot() {
-    const { state, saveCreds } = await useMultiFileAuthState("./auth");
-function connectBot(question) {
-  console.log(question);
-}
+    XeonBotInc.ev.on('connection.update', async (s) => {
+        const { connection, lastDisconnect, qr } = s
 
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        logger: pino({ level: "silent" })
-    });
-
-    if (!sock.authState.creds.registered) {
-        let phoneNumber = await question(gradient("#ff0000", "#C00000")("📲 Deine Nummer (inkl. Ländervorwahl, z.B. +49123456789): "));
-        phoneNumber = phoneNumber.replace(/[^0-9]/g, "");
-
-        let code = await sock.requestPairingCode(phoneNumber, "AAAAAAAA");
-        code = code?.match(/.{1,4}/g)?.join("-") || code;
-        console.log(gradient("#ff0000", "#C00000")("🔑 Pairing Code: " + code));
-    }
-
-    sock.ev.on("connection.update", (update) => {
-        const { connection } = update;
-        if (connection === "close") {
-            console.log(chalk.red("❌ Verbindung geschlossen, reconnect..."));
-            setTimeout(connectBot, 5000);
-        } else if (connection === "open") {
-            console.log(chalk.green("✅ bot Verbunden mit WhatsApp!"));
+        if (qr) {
+            console.log(chalk.yellow('📱 QR Code generated. Please scan with WhatsApp.'))
         }
-    });
-}
 
-connectBot();
-async function startBot() {
-startBot();
-}
+        if (connection === 'connecting') {
+            console.log(chalk.yellow('🔄 Connecting to WhatsApp...'))
+        }
+
+        if (connection == "open") {
+            console.log(chalk.magenta(` `))
+            console.log(chalk.yellow(`🌿Connected to => ` + JSON.stringify(XeonBotInc.user, null, 2)))
+
+            try {
+                const botNumber = XeonBotInc.user.id.split(':')[0] + '@s.whatsapp.net';
+                await XeonBotInc.sendMessage(botNumber, {
+                    text: `🤖 Bot Connected Successfully!\n\n⏰ Time: ${new Date().toLocaleString()}\n✅ Status: Online and Ready!\n\n✅Make sure to join below channel`,
+                    contextInfo: {
+                        forwardingScore: 1,
+                        isForwarded: true,
+                        forwardedNewsletterMessageInfo: {
+                            newsletterJid: '120363161513685998@newsletter',
+                            newsletterName: 'KnightBot MD',
+                            serverMessageId: -1
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error sending connection message:', error.message)
+            }
+
+            await delay(1999)
+            console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname || 'KNIGHT BOT'} ]`)}\n\n`))
+            console.log(chalk.cyan(`< ================================================== >`))
