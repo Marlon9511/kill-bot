@@ -1,4 +1,9 @@
-import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys';
+import makeWASocket, { 
+    useMultiFileAuthState, 
+    DisconnectReason,
+    makeCacheableSignalKeyStore,
+    fetchLatestBaileysVersion
+} from '@whiskeysockets/baileys';
 import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
@@ -11,7 +16,7 @@ const rl = readline.createInterface({
 });
 
 const question = (q) => new Promise((resolve) => rl.question(q, resolve));
-// ─── Config ───────────────────────────────────────────────────────────────────
+// ─── Config ──────────────────────────────────────────────────────────
 const CONFIG_FILE = './data/config.json';
 const OWNERS_FILE = './data/owners.json';
 const SESSIONS_DIR = './sessions';
@@ -41,7 +46,12 @@ function isOwner(jid) {
 function saveConfig() { saveJSON(CONFIG_FILE, config); }
 function saveOwners() { saveJSON(OWNERS_FILE, owners); }
 
-// ─── Sessions ─────────────────────────────────────────────────────────────────
+// ─── Utility Functions ──────────────────────────────────────────────
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ─── Sessions ──────────────────────────────────────────────────────────
 const sessions = {};
 
 async function askQuestion(prompt) {
@@ -106,7 +116,7 @@ async function connectSession(sessionId) {
     return sock;
 }
 
-// ─── Message Handler ──────────────────────────────────────────────────────────
+// ─── Message Handler ───────────────────────────────────────────────────────
 async function handleMessage(sock, msg, sessionId) {
     const jid    = msg.key.remoteJid;
     const sender = msg.key.participant || msg.key.remoteJid;
@@ -259,7 +269,7 @@ Sessions: *${Object.keys(sessions).length}*`
     }
 }
 
-// ─── Startup ──────────────────────────────────────────────────────────────────
+// ─── Startup ──────────────────────────────────────────────────────────
 async function main() {
     console.log('GroupBan-Bot V1 - By Schwamm');
     console.log('================================');
@@ -298,42 +308,9 @@ async function main() {
     console.log(`Owner: ${getOwners().length > 0 ? getOwners().map(o => '+'+o).join(', ') : 'Keine'}`);
     console.log('================================\n');
 }
-    XeonBotInc.ev.on('connection.update', async (s) => {
-        const { connection, lastDisconnect, qr } = s
 
-        if (qr) {
-            console.log(chalk.yellow('📱 QR Code generated. Please scan with WhatsApp.'))
-        }
-
-        if (connection === 'connecting') {
-            console.log(chalk.yellow('🔄 Connecting to WhatsApp...'))
-        }
-
-        if (connection == "open") {
-            console.log(chalk.magenta(` `))
-            console.log(chalk.yellow(`🌿Connected to => ` + JSON.stringify(XeonBotInc.user, null, 2)))
-
-            try {
-                const botNumber = XeonBotInc.user.id.split(':')[0] + '@s.whatsapp.net';
-                await XeonBotInc.sendMessage(botNumber, {
-                    text: `🤖 Bot Connected Successfully!\n\n⏰ Time: ${new Date().toLocaleString()}\n✅ Status: Online and Ready!\n\n✅Make sure to join below channel`,
-                    contextInfo: {
-                        forwardingScore: 1,
-                        isForwarded: true,
-                        forwardedNewsletterMessageInfo: {
-                            newsletterJid: '120363161513685998@newsletter',
-                            newsletterName: 'KnightBot MD',
-                            serverMessageId: -1
-                        }
-                    }
-                });
-            } catch (error) {
-                console.error('Error sending connection message:', error.message)
-            }
-
-            await delay(1999)
-            console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname || 'KNIGHT BOT'} ]`)}\n\n`))
-            console.log(chalk.cyan(`< ================================================== >`));
-{
-startbot()
-};
+// Start the bot
+main().catch(err => {
+    console.error('Bot error:', err);
+    process.exit(1);
+});
