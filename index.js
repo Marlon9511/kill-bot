@@ -335,5 +335,5 @@ async function main() {
             console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname || 'KNIGHT BOT'} ]`)}\n\n`))
             console.log(chalk.cyan(`< ================================================== >`));
 ;
-startbot()
-;
+startbot();
+
