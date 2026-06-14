@@ -8,7 +8,6 @@ import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
 import readline from "readline";
-import gradient from "gradient-string";
 
 const rl = readline.createInterface({
   input: process.stdin,
