@@ -1,101 +1,169 @@
-/**
- * WhatsApp Bot - whatsapp-web.js
- * ================================
+**
+ * WhatsApp Bot – @whiskeysockets/baileys
+ * ========================================
  * Installation:
- *   npm install whatsapp-web.js qrcode-terminal
+ *   npm install @whiskeysockets/baileys @hapi/boom pino
  *
  * Starten:
  *   node whatsapp-bot.js
  *
  * Beim ersten Start: QR-Code mit WhatsApp scannen
- * (WhatsApp > Verknüpfte Geräte > Gerät hinzufügen)
+ * (WhatsApp > Einstellungen > Verknüpfte Geräte > Gerät hinzufügen)
+ *
+ * Alternativ: Pairing-Code statt QR (siehe unten)
  */
 
-const { Client, LocalAuth } = require("whatsapp-web.js");
-const qrcode = require("qrcode-terminal");
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  DisconnectReason,
+  isJidGroup,
+} = require("@whiskeysockets/baileys");
+const { Boom } = require("@hapi/boom");
+const pino = require("pino");
 
 // ──────────────────────────────────────────────
 // Konfiguration
 // ──────────────────────────────────────────────
 const CONFIG = {
-  prefix: "!", // Befehlsprefix
-  ownerNumber: "49123456789@c.us", // Deine Nummer (Ländervorwahl ohne +)
-  botName: "MeinBot",
+  prefix: "!",            // Befehlsprefix
+  botName: "BaileysBot",
+  authDir: "./auth",      // Session-Ordner (wird auto-erstellt)
+  // Pairing-Code statt QR? Setze usePairingCode: true
+  // und trage deine Nummer ein (Ländervorwahl ohne +, kein + / () / -)
+  usePairingCode: false,
+  phoneNumber: "4917612345678",
 };
+
+// ──────────────────────────────────────────────
+// Hilfsfunktionen
+// ──────────────────────────────────────────────
+
+/** Extrahiert den Nachrichtentext aus allen gängigen WhatsApp-Payloads */
+function getMessageText(msg) {
+  const m = msg.message;
+  if (!m) return "";
+  return (
+    m.conversation ||
+    m.extendedTextMessage?.text ||
+    m.imageMessage?.caption ||
+    m.videoMessage?.caption ||
+    m.buttonsResponseMessage?.selectedButtonId ||
+    m.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    ""
+  );
+}
+
+/** Tippt-Indikator senden */
+async function sendTyping(sock, jid) {
+  await sock.presenceSubscribe(jid);
+  await sock.sendPresenceUpdate("composing", jid);
+  await new Promise((r) => setTimeout(r, 500));
+  await sock.sendPresenceUpdate("paused", jid);
+}
 
 // ──────────────────────────────────────────────
 // Befehle definieren
 // ──────────────────────────────────────────────
 const commands = {
-  // !hilfe – zeigt alle Befehle
   hilfe: {
-    description: "Zeigt alle verfügbaren Befehle",
-    handler: async (msg) => {
+    description: "Zeigt alle Befehle",
+    handler: async (sock, msg, jid) => {
       const list = Object.entries(commands)
-        .map(([name, cmd]) => `• *${CONFIG.prefix}${name}* – ${cmd.description}`)
+        .map(([name, cmd]) => `▸ *${CONFIG.prefix}${name}* – ${cmd.description}`)
         .join("\n");
-      await msg.reply(`🤖 *${CONFIG.botName} – Befehle:*\n\n${list}`);
+      await sock.sendMessage(
+        jid,
+        { text: `🤖 *${CONFIG.botName} – Befehle:*\n\n${list}` },
+        { quoted: msg }
+      );
     },
   },
 
-  // !ping – Latenztest
   ping: {
     description: "Testet ob der Bot aktiv ist",
-    handler: async (msg) => {
+    handler: async (sock, msg, jid) => {
       const start = Date.now();
-      const reply = await msg.reply("Pong! 🏓");
-      const latency = Date.now() - start;
-      await reply.edit(`Pong! 🏓 _(${latency}ms)_`);
+      await sock.sendMessage(
+        jid,
+        { text: `🏓 Pong! _(${Date.now() - start}ms)_` },
+        { quoted: msg }
+      );
     },
   },
 
-  // !info – Chatinfos
-  info: {
-    description: "Zeigt Infos zum aktuellen Chat",
-    handler: async (msg, client) => {
-      const chat = await msg.getChat();
-      const contact = await msg.getContact();
-      const text =
-        `📋 *Chat-Info*\n` +
-        `👤 Name: ${contact.pushname || contact.name || "Unbekannt"}\n` +
-        `📱 Nummer: ${contact.number}\n` +
-        `💬 Chat-Typ: ${chat.isGroup ? "Gruppe" : "Privat"}\n` +
-        (chat.isGroup ? `👥 Mitglieder: ${chat.participants.length}\n` : "");
-      await msg.reply(text);
-    },
-  },
-
-  // !uhrzeit – aktuelle Uhrzeit
   uhrzeit: {
-    description: "Zeigt die aktuelle Uhrzeit",
-    handler: async (msg) => {
+    description: "Aktuelle Uhrzeit & Datum",
+    handler: async (sock, msg, jid) => {
       const now = new Date().toLocaleString("de-DE", {
         timeZone: "Europe/Berlin",
         dateStyle: "full",
         timeStyle: "medium",
       });
-      await msg.reply(`🕐 *${now}*`);
+      await sock.sendMessage(jid, { text: `🕐 *${now}*` }, { quoted: msg });
     },
   },
 
-  // !wiederhol <text> – Echo
   wiederhol: {
-    description: "Wiederholt deine Nachricht",
-    handler: async (msg, _client, args) => {
-      if (!args.length) return msg.reply("❗ Bitte gib einen Text an.");
-      await msg.reply(`🔁 ${args.join(" ")}`);
+    description: "Wiederholt deine Nachricht (!wiederhol <text>)",
+    handler: async (sock, msg, jid, args) => {
+      if (!args.length) {
+        return sock.sendMessage(
+          jid,
+          { text: "❗ Bitte gib einen Text an.\nBeispiel: `!wiederhol Hallo Welt`" },
+          { quoted: msg }
+        );
+      }
+      await sock.sendMessage(
+        jid,
+        { text: `🔁 ${args.join(" ")}` },
+        { quoted: msg }
+      );
     },
   },
 
-  // !würfel [seiten] – Würfelwurf
   würfel: {
-    description: "Würfelt eine Zahl (Standard: 1–6)",
-    handler: async (msg, _client, args) => {
-      const seiten = parseInt(args[0]) || 6;
-      if (seiten < 2 || seiten > 1000)
-        return msg.reply("❗ Seiten müssen zwischen 2 und 1000 liegen.");
+    description: "Würfelt eine Zahl (!würfel [seiten])",
+    handler: async (sock, msg, jid, args) => {
+      const seiten = Math.min(Math.max(parseInt(args[0]) || 6, 2), 1000);
       const ergebnis = Math.floor(Math.random() * seiten) + 1;
-      await msg.reply(`🎲 Du hast eine *${ergebnis}* gewürfelt (1–${seiten})`);
+      await sock.sendMessage(
+        jid,
+        { text: `🎲 Du hast eine *${ergebnis}* gewürfelt (1–${seiten})` },
+        { quoted: msg }
+      );
+    },
+  },
+
+  rechner: {
+    description: "Einfacher Rechner (!rechner 2+2)",
+    handler: async (sock, msg, jid, args) => {
+      try {
+        const ausdruck = args.join(" ").replace(/[^0-9+\-*/().% ]/g, "");
+        if (!ausdruck) throw new Error("Kein Ausdruck");
+        // eslint-disable-next-line no-new-func
+        const ergebnis = Function(`"use strict"; return (${ausdruck})`)();
+        await sock.sendMessage(
+          jid,
+          { text: `🧮 *${ausdruck} = ${ergebnis}*` },
+          { quoted: msg }
+        );
+      } catch {
+        await sock.sendMessage(
+          jid,
+          { text: "❗ Ungültiger Ausdruck.\nBeispiel: `!rechner 10 * (3 + 2)`" },
+          { quoted: msg }
+        );
+      }
+    },
+  },
+
+  flip: {
+    description: "Münze werfen",
+    handler: async (sock, msg, jid) => {
+      const result = Math.random() < 0.5 ? "🪙 Kopf" : "🪙 Zahl";
+      await sock.sendMessage(jid, { text: result }, { quoted: msg });
     },
   },
 };
@@ -106,96 +174,145 @@ const commands = {
 const autoReplies = [
   {
     keywords: ["hallo", "hi", "hey", "moin", "guten morgen", "guten tag"],
-    reply: (name) => `Hallo ${name}! 👋 Schreib *${CONFIG.prefix}hilfe* für alle Befehle.`,
+    reply: () =>
+      `👋 Hallo! Schreib *${CONFIG.prefix}hilfe* um alle Befehle zu sehen.`,
   },
   {
     keywords: ["danke", "dankeschön", "thx", "danke schön"],
-    reply: () => "Gern geschehen! 😊",
+    reply: () => "😊 Gern geschehen!",
   },
   {
     keywords: ["tschüss", "bye", "ciao", "auf wiedersehen"],
-    reply: (name) => `Tschüss ${name}! 👋 Bis bald!`,
+    reply: () => "👋 Tschüss! Bis bald!",
   },
 ];
 
 // ──────────────────────────────────────────────
-// Bot initialisieren
-// ──────────────────────────────────────────────
-const client = new Client({
-  authStrategy: new LocalAuth({ clientId: "mein-bot" }),
-  puppeteer: {
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  },
-});
-
-// QR-Code anzeigen
-client.on("qr", (qr) => {
-  console.log("\n📱 Scanne diesen QR-Code in WhatsApp:\n");
-  qrcode.generate(qr, { small: true });
-});
-
-// Bereit-Meldung
-client.on("ready", () => {
-  console.log(`\n✅ ${CONFIG.botName} ist online und bereit!\n`);
-});
-
-// Verbindung unterbrochen
-client.on("disconnected", (reason) => {
-  console.log("❌ Bot getrennt:", reason);
-  process.exit(1);
-});
-
-// ──────────────────────────────────────────────
-// Nachrichten verarbeiten
-// ──────────────────────────────────────────────
-client.on("message", async (msg) => {
-  // Eigene Nachrichten und Status ignorieren
-  if (msg.fromMe || msg.isStatus) return;
-
-  const body = msg.body.trim();
-  const contact = await msg.getContact();
-  const senderName = contact.pushname || contact.name || "Unbekannt";
-
-  // ── Befehle verarbeiten ──
-  if (body.startsWith(CONFIG.prefix)) {
-    const [rawCmd, ...args] = body.slice(CONFIG.prefix.length).trim().split(/\s+/);
-    const cmdName = rawCmd.toLowerCase();
-
-    if (commands[cmdName]) {
-      try {
-        await commands[cmdName].handler(msg, client, args);
-      } catch (err) {
-        console.error(`Fehler bei Befehl "${cmdName}":`, err);
-        await msg.reply("⚠️ Ein Fehler ist aufgetreten.");
-      }
-      return;
-    } else {
-      await msg.reply(
-        `❓ Unbekannter Befehl. Schreib *${CONFIG.prefix}hilfe* für alle Befehle.`
-      );
-      return;
-    }
-  }
-
-  // ── Auto-Antworten prüfen ──
-  const bodyLower = body.toLowerCase();
-  for (const rule of autoReplies) {
-    if (rule.keywords.some((kw) => bodyLower.includes(kw))) {
-      await msg.reply(rule.reply(senderName));
-      return;
-    }
-  }
-});
-
 // Bot starten
-client.initialize();
+// ──────────────────────────────────────────────
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState(CONFIG.authDir);
+  const { version } = await fetchLatestBaileysVersion();
+
+  console.log(`\n🔧 Baileys Version: ${version.join(".")}`);
+
+  const sock = makeWASocket({
+    version,
+    auth: state,
+    logger: pino({ level: "silent" }), // Auf "debug" setzen zum Debuggen
+    printQRInTerminal: !CONFIG.usePairingCode,
+    browser: ["Ubuntu", "Chrome", "20.0.04"],
+    markOnlineOnConnect: false,
+  });
+
+  // ── Credentials speichern ──
+  sock.ev.on("creds.update", saveCreds);
+
+  // ── Pairing-Code (Alternative zu QR) ──
+  if (CONFIG.usePairingCode && !sock.authState.creds.registered) {
+    const code = await sock.requestPairingCode(CONFIG.phoneNumber);
+    console.log(`\n🔑 Pairing-Code: *${code}*`);
+    console.log("   In WhatsApp: Einstellungen > Verknüpfte Geräte > Mit Telefonnummer verknüpfen\n");
+  }
+
+  // ── Verbindungsstatus ──
+  sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
+    if (qr) {
+      console.log("\n📱 QR-Code erscheint oben – bitte mit WhatsApp scannen.\n");
+    }
+
+    if (connection === "close") {
+      const statusCode = (lastDisconnect?.error instanceof Boom)
+        ? lastDisconnect.error.output.statusCode
+        : 0;
+      const loggedOut = statusCode === DisconnectReason.loggedOut;
+
+      console.log(
+        `❌ Verbindung getrennt (${statusCode}). ${loggedOut ? "Session abgelaufen." : "Reconnect..."}`
+      );
+
+      if (!loggedOut) {
+        // Automatisch neu verbinden
+        setTimeout(startBot, 3000);
+      } else {
+        console.log("⚠️  Bitte lösche den ./auth Ordner und starte neu.");
+        process.exit(1);
+      }
+    }
+
+    if (connection === "open") {
+      console.log(`\n✅ ${CONFIG.botName} ist online und bereit!\n`);
+    }
+  });
+
+  // ── Nachrichten verarbeiten ──
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (type !== "notify") return;
+
+    for (const msg of messages) {
+      // Eigene Nachrichten, Status und leere Nachrichten ignorieren
+      if (msg.key.fromMe || !msg.message) continue;
+
+      const jid = msg.key.remoteJid;
+      const isGroup = isJidGroup(jid);
+      const body = getMessageText(msg).trim();
+
+      if (!body) continue;
+
+      // Tippt-Indikator
+      await sendTyping(sock, jid);
+
+      // ── Befehle verarbeiten ──
+      if (body.startsWith(CONFIG.prefix)) {
+        const [rawCmd, ...args] = body.slice(CONFIG.prefix.length).trim().split(/\s+/);
+        const cmdName = rawCmd.toLowerCase();
+
+        if (commands[cmdName]) {
+          try {
+            await commands[cmdName].handler(sock, msg, jid, args);
+          } catch (err) {
+            console.error(`[Fehler] Befehl "${cmdName}":`, err.message);
+            await sock.sendMessage(
+              jid,
+              { text: "⚠️ Ups, da ist etwas schiefgelaufen." },
+              { quoted: msg }
+            );
+          }
+        } else {
+          await sock.sendMessage(
+            jid,
+            {
+              text: `❓ Unbekannter Befehl.\nSchreib *${CONFIG.prefix}hilfe* für alle verfügbaren Befehle.`,
+            },
+            { quoted: msg }
+          );
+        }
+        continue;
+      }
+
+      // ── Auto-Antworten (nur Privatnachrichten, nicht in Gruppen) ──
+      if (!isGroup) {
+        const bodyLower = body.toLowerCase();
+        for (const rule of autoReplies) {
+          if (rule.keywords.some((kw) => bodyLower.includes(kw))) {
+            await sock.sendMessage(jid, { text: rule.reply() }, { quoted: msg });
+            break;
+          }
+        }
+      }
+    }
+  });
+
+  return sock;
+}
 
 // ──────────────────────────────────────────────
 // Sauberes Beenden mit Ctrl+C
 // ──────────────────────────────────────────────
 process.on("SIGINT", async () => {
   console.log("\n🛑 Bot wird beendet...");
-  await client.destroy();
   process.exit(0);
 });
+
+// Bot starten
+startBot().catch(console.error);
