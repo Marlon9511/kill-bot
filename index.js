@@ -1,16 +1,4 @@
- * WhatsApp Bot – @whiskeysockets/baileys
- * ========================================
- * Installation:
- *   npm install @whiskeysockets/baileys @hapi/boom pino
- *
- * Starten:
- *   node whatsapp-bot.js
- *
- * Beim ersten Start: QR-Code mit WhatsApp scannen
- * (WhatsApp > Einstellungen > Verknüpfte Geräte > Gerät hinzufügen)
- *
- * Alternativ: Pairing-Code statt QR (siehe unten)
- */
+ 
 
 const {
   default: makeWASocket,
