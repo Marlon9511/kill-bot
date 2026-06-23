@@ -1,4 +1,3 @@
-**
  * WhatsApp Bot – @whiskeysockets/baileys
  * ========================================
  * Installation:
