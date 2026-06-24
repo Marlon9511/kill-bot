@@ -1,5 +1,3 @@
- 
-
 import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
@@ -7,24 +5,24 @@ import makeWASocket, {
   isJidGroup,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
-import pino from "pino";
-
-// ──────────────────────────────────────────────
-// Konfiguration
-// ──────────────────────────────────────────────
-const CONFIG = {
-  prefix: "!",
-  botName: "BaileysBot",
-  authDir: "./auth",
-  // Pairing-Code statt QR? Setze usePairingCode: true
-  // und trage deine Nummer ein (Ländervorwahl ohne +, kein + / () / -)
-  usePairingCode: false,
-  phoneNumber: "4917612345678",
-};
+import P from "pino";
+import chalk from "chalk";
+import gradient from "gradient-string";
+import readline from "readline";
 
 // ──────────────────────────────────────────────
 // Hilfsfunktionen
 // ──────────────────────────────────────────────
+
+/** readline-Frage als Promise */
+const question = (prompt) =>
+  new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
 
 /** Extrahiert den Nachrichtentext aus allen gängigen WhatsApp-Payloads */
 function getMessageText(msg) {
@@ -50,7 +48,15 @@ async function sendTyping(sock, jid) {
 }
 
 // ──────────────────────────────────────────────
-// Befehle definieren
+// Konfiguration
+// ──────────────────────────────────────────────
+const CONFIG = {
+  prefix: "!",
+  botName: "BaileysBot",
+};
+
+// ──────────────────────────────────────────────
+// Befehle
 // ──────────────────────────────────────────────
 const commands = {
   hilfe: {
@@ -94,18 +100,13 @@ const commands = {
   wiederhol: {
     description: "Wiederholt deine Nachricht (!wiederhol <text>)",
     handler: async (sock, msg, jid, args) => {
-      if (!args.length) {
+      if (!args.length)
         return sock.sendMessage(
           jid,
           { text: "❗ Bitte gib einen Text an.\nBeispiel: `!wiederhol Hallo Welt`" },
           { quoted: msg }
         );
-      }
-      await sock.sendMessage(
-        jid,
-        { text: `🔁 ${args.join(" ")}` },
-        { quoted: msg }
-      );
+      await sock.sendMessage(jid, { text: `🔁 ${args.join(" ")}` }, { quoted: msg });
     },
   },
 
@@ -154,7 +155,7 @@ const commands = {
 };
 
 // ──────────────────────────────────────────────
-// Auto-Antworten (Schlüsselwörter)
+// Auto-Antworten
 // ──────────────────────────────────────────────
 const autoReplies = [
   {
@@ -172,16 +173,64 @@ const autoReplies = [
 ];
 
 // ──────────────────────────────────────────────
-// Bot starten
+// Nachrichten-Handler (wird nach Login gestartet)
 // ──────────────────────────────────────────────
-async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState(CONFIG.authDir);
-  const { version } = await fetchLatestBaileysVersion();
+function registerMessageHandler(sock) {
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (type !== "notify") return;
 
-  console.log(`\n🔧 Baileys Version: ${version.join(".")}`);
+    for (const msg of messages) {
+      if (msg.key.fromMe || !msg.message) continue;
 
-  
-// pair
+      const jid = msg.key.remoteJid;
+      const isGroup = isJidGroup(jid);
+      const body = getMessageText(msg).trim();
+
+      if (!body) continue;
+
+      await sendTyping(sock, jid);
+
+      // ── Befehle ──
+      if (body.startsWith(CONFIG.prefix)) {
+        const [rawCmd, ...args] = body.slice(CONFIG.prefix.length).trim().split(/\s+/);
+        const cmdName = rawCmd.toLowerCase();
+
+        if (commands[cmdName]) {
+          try {
+            await commands[cmdName].handler(sock, msg, jid, args);
+          } catch (err) {
+            console.error(chalk.red(`[Fehler] Befehl "${cmdName}": ${err.message}`));
+            await sock.sendMessage(
+              jid,
+              { text: "⚠️ Ups, da ist etwas schiefgelaufen." },
+              { quoted: msg }
+            );
+          }
+        } else {
+          await sock.sendMessage(
+            jid,
+            {
+              text: `❓ Unbekannter Befehl.\nSchreib *${CONFIG.prefix}hilfe* für alle verfügbaren Befehle.`,
+            },
+            { quoted: msg }
+          );
+        }
+        continue;
+      }
+
+      // ── Auto-Antworten (nur Privatnachrichten) ──
+      if (!isGroup) {
+        const bodyLower = body.toLowerCase();
+        for (const rule of autoReplies) {
+          if (rule.keywords.some((kw) => bodyLower.includes(kw))) {
+            await sock.sendMessage(jid, { text: rule.reply() }, { quoted: msg });
+            break;
+          }
+        }
+      }
+    }
+  });
+}
 
 //=========================//
 // Connect Bot + Pairing-Code
@@ -191,12 +240,14 @@ async function connectBot() {
 
   const sock = makeWASocket({
     auth: state,
-    logger: P({ level: 'silent' }),
-    printQRInTerminal: false
+    logger: P({ level: "silent" }),
+    printQRInTerminal: false,
   });
 
   if (!sock.authState.creds.registered) {
-    let phoneNumber = await question(gradient("#ff0000", "#C00000")("📲 Deine Nummer (inkl. Ländervorwahl, z.B. 49123456789): "));
+    let phoneNumber = await question(
+      gradient("#ff0000", "#C00000")("📲 Deine Nummer (inkl. Ländervorwahl, z.B. 49123456789): ")
+    );
     phoneNumber = phoneNumber.replace(/[^0-9]/g, "");
 
     if (!phoneNumber) {
@@ -220,7 +271,8 @@ async function connectBot() {
     const { connection, lastDisconnect } = update;
 
     if (connection === "close") {
-      const shouldReconnect = (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut);
+      const shouldReconnect =
+        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       console.log(chalk.red("❌ Verbindung geschlossen."));
       if (shouldReconnect) {
         console.log(chalk.yellow("🔄 Reconnecte in 5 Sekunden..."));
@@ -229,18 +281,26 @@ async function connectBot() {
     } else if (connection === "open") {
       console.log(chalk.green("✅ Erfolgreich mit WhatsApp verbunden!"));
       console.log(chalk.green("-----------------------------------------"));
+      registerMessageHandler(sock);
     }
   });
 
   sock.ev.on("creds.update", saveCreds);
 }
 
+//=========================//
+// Start
+//=========================//
+console.log(gradient("#00ffcc", "#0099ff")(`
+╔══════════════════════════════╗
+║       ${CONFIG.botName}            ║
+║   powered by Baileys (ESM)   ║
+╚══════════════════════════════╝
+`));
 
+connectBot().catch(console.error);
 
-// ── Sauberes Beenden mit Ctrl+C ──
 process.on("SIGINT", () => {
-  console.log("\n🛑 Bot wird beendet...");
+  console.log(chalk.yellow("\n🛑 Bot wird beendet..."));
   process.exit(0);
 });
-
-startBot().catch(console.error);
