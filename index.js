@@ -1,22 +1,21 @@
  
 
-const {
-  default: makeWASocket,
+import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   DisconnectReason,
   isJidGroup,
-} = require("@whiskeysockets/baileys");
-const { Boom } = require("@hapi/boom");
-const pino = require("pino");
+} from "@whiskeysockets/baileys";
+import { Boom } from "@hapi/boom";
+import pino from "pino";
 
 // ──────────────────────────────────────────────
 // Konfiguration
 // ──────────────────────────────────────────────
 const CONFIG = {
-  prefix: "!",            // Befehlsprefix
+  prefix: "!",
   botName: "BaileysBot",
-  authDir: "./auth",      // Session-Ordner (wird auto-erstellt)
+  authDir: "./auth",
   // Pairing-Code statt QR? Setze usePairingCode: true
   // und trage deine Nummer ein (Ländervorwahl ohne +, kein + / () / -)
   usePairingCode: false,
@@ -129,7 +128,6 @@ const commands = {
       try {
         const ausdruck = args.join(" ").replace(/[^0-9+\-*/().% ]/g, "");
         if (!ausdruck) throw new Error("Kein Ausdruck");
-        // eslint-disable-next-line no-new-func
         const ergebnis = Function(`"use strict"; return (${ausdruck})`)();
         await sock.sendMessage(
           jid,
@@ -161,8 +159,7 @@ const commands = {
 const autoReplies = [
   {
     keywords: ["hallo", "hi", "hey", "moin", "guten morgen", "guten tag"],
-    reply: () =>
-      `👋 Hallo! Schreib *${CONFIG.prefix}hilfe* um alle Befehle zu sehen.`,
+    reply: () => `👋 Hallo! Schreib *${CONFIG.prefix}hilfe* um alle Befehle zu sehen.`,
   },
   {
     keywords: ["danke", "dankeschön", "thx", "danke schön"],
@@ -186,7 +183,7 @@ async function startBot() {
   const sock = makeWASocket({
     version,
     auth: state,
-    logger: pino({ level: "silent" }), // Auf "debug" setzen zum Debuggen
+    logger: pino({ level: "silent" }),
     printQRInTerminal: !CONFIG.usePairingCode,
     browser: ["Ubuntu", "Chrome", "20.0.04"],
     markOnlineOnConnect: false,
@@ -209,9 +206,10 @@ async function startBot() {
     }
 
     if (connection === "close") {
-      const statusCode = (lastDisconnect?.error instanceof Boom)
-        ? lastDisconnect.error.output.statusCode
-        : 0;
+      const statusCode =
+        lastDisconnect?.error instanceof Boom
+          ? lastDisconnect.error.output.statusCode
+          : 0;
       const loggedOut = statusCode === DisconnectReason.loggedOut;
 
       console.log(
@@ -219,7 +217,6 @@ async function startBot() {
       );
 
       if (!loggedOut) {
-        // Automatisch neu verbinden
         setTimeout(startBot, 3000);
       } else {
         console.log("⚠️  Bitte lösche den ./auth Ordner und starte neu.");
@@ -237,7 +234,6 @@ async function startBot() {
     if (type !== "notify") return;
 
     for (const msg of messages) {
-      // Eigene Nachrichten, Status und leere Nachrichten ignorieren
       if (msg.key.fromMe || !msg.message) continue;
 
       const jid = msg.key.remoteJid;
@@ -246,10 +242,9 @@ async function startBot() {
 
       if (!body) continue;
 
-      // Tippt-Indikator
       await sendTyping(sock, jid);
 
-      // ── Befehle verarbeiten ──
+      // ── Befehle ──
       if (body.startsWith(CONFIG.prefix)) {
         const [rawCmd, ...args] = body.slice(CONFIG.prefix.length).trim().split(/\s+/);
         const cmdName = rawCmd.toLowerCase();
@@ -277,7 +272,7 @@ async function startBot() {
         continue;
       }
 
-      // ── Auto-Antworten (nur Privatnachrichten, nicht in Gruppen) ──
+      // ── Auto-Antworten (nur Privatnachrichten) ──
       if (!isGroup) {
         const bodyLower = body.toLowerCase();
         for (const rule of autoReplies) {
@@ -289,17 +284,12 @@ async function startBot() {
       }
     }
   });
-
-  return sock;
 }
 
-// ──────────────────────────────────────────────
-// Sauberes Beenden mit Ctrl+C
-// ──────────────────────────────────────────────
-process.on("SIGINT", async () => {
+// ── Sauberes Beenden mit Ctrl+C ──
+process.on("SIGINT", () => {
   console.log("\n🛑 Bot wird beendet...");
   process.exit(0);
 });
 
-// Bot starten
 startBot().catch(console.error);
