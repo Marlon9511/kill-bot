@@ -286,6 +286,62 @@ async function startBot() {
   });
 }
 
+// pair
+
+//=========================//
+// Connect Bot + Pairing-Code
+//=========================//
+async function connectBot() {
+  const { state, saveCreds } = await useMultiFileAuthState("./auth");
+
+  const sock = makeWASocket({
+    auth: state,
+    logger: P({ level: 'silent' }),
+    printQRInTerminal: false
+  });
+
+  if (!sock.authState.creds.registered) {
+    let phoneNumber = await question(gradient("#ff0000", "#C00000")("📲 Deine Nummer (inkl. Ländervorwahl, z.B. 49123456789): "));
+    phoneNumber = phoneNumber.replace(/[^0-9]/g, "");
+
+    if (!phoneNumber) {
+      console.log(chalk.red("❌ Ungültige Telefonnummer!"));
+      return;
+    }
+
+    console.log(chalk.yellow("⏳ Generiere Pairing-Code... Bitte warten..."));
+    setTimeout(async () => {
+      try {
+        let code = await sock.requestPairingCode(phoneNumber);
+        code = code?.match(/.{1,4}/g)?.join("-") || code;
+        console.log(gradient("#00ffcc", "#0099ff")("\n🔑 DEIN PAIRING CODE: " + code + "\n"));
+      } catch (error) {
+        console.log(chalk.red("❌ Fehler beim Generieren des Pairing-Codes: "), error);
+      }
+    }, 3000);
+  }
+
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect } = update;
+
+    if (connection === "close") {
+      const shouldReconnect = (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut);
+      console.log(chalk.red("❌ Verbindung geschlossen."));
+      if (shouldReconnect) {
+        console.log(chalk.yellow("🔄 Reconnecte in 5 Sekunden..."));
+        setTimeout(connectBot, 5000);
+      }
+    } else if (connection === "open") {
+      console.log(chalk.green("✅ Erfolgreich mit WhatsApp verbunden!"));
+      console.log(chalk.green("-----------------------------------------"));
+    }
+  });
+
+  sock.ev.on("creds.update", saveCreds);
+}
+
+
+
 // ── Sauberes Beenden mit Ctrl+C ──
 process.on("SIGINT", () => {
   console.log("\n🛑 Bot wird beendet...");
